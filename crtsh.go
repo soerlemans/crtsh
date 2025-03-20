@@ -21,7 +21,7 @@ type Arguments struct {
 	Recurse    bool   `arg:"-r,--recurse" help:"Recursively search for subdomains." default:"false"`
 	Wildcard   bool   `arg:"-w,--wildcard" help:"Include wildcard in output." default:"false"`
 	Json       bool   `arg:"-j,--json" help:"Include wildcard in output." default:"false"`
-	OutputFile string `arg:"-o,--output" help:"Write to output file instead of terminal." default:"crtsh.txt"`
+	OutputFile string `arg:"-o,--output" help:"Write to output file instead of terminal." default:""`
 }
 
 // Methods:
@@ -66,11 +66,15 @@ const (
 	CRTSH_BASE_URL   = "https://crt.sh/?q=%s&output=json"
 	VERSION          = "1.0"
 	QUERIES_PREALLOC = 100
+	NEWLINE          = "\n"
 	WILDCARD         = "*"
 	WILDCARD_ENCODE  = "%25"
 )
 
 var args Arguments
+
+// Contains subdomains containing a wildcard (*).
+var wildcardSubdomains []string
 
 // Functions:
 func Fail(t_err error) {
@@ -117,45 +121,99 @@ ret:
 func extractDomains(t_json []map[string]interface{}) []string {
 	var domains []string
 
-	for key, value := range t_json {
-		if key == "name_value" {
-			domains = append(domains, value)
+	// Loop through and extract domains from JSON.
+	for _, elem := range t_json {
+		for key, value := range elem {
+			if key == "name_value" {
+				elems := strings.Split(value.(string), "\n")
+
+				fmt.Printf("%s: %s\n", key, elems)
+				for _, elem := range elems {
+					if strings.Contains(elem, WILDCARD) {
+						wildcardSubdomains = append(wildcardSubdomains, elem)
+					} else {
+						domains = append(domains, elem)
+					}
+				}
+
+			}
 		}
 	}
 
 	return domains
 }
 
-func fetch(t_queries []string) {
+func fetch(t_query string) []string {
+	var domains []string
+
 	encodeWildcard := args.Wildcard || args.Recurse
 
+	// Encode wildcard if necessary.
+	if encodeWildcard {
+		t_query = strings.ReplaceAll(t_query, WILDCARD, WILDCARD_ENCODE)
+	}
+
+	// Make the request.
+	url := fmt.Sprintf(CRTSH_BASE_URL, t_query)
+	resp, err := http.Get(url)
+	if err != nil {
+		Log(err)
+		return domains
+	}
+
+	// Deal with JSON in the body.
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+
+	var jsonData []map[string]interface{}
+	err = json.Unmarshal(body, &jsonData)
+	if err != nil {
+		Log(err)
+		return domains
+	}
+
+	// Loop through domains
+	domains = extractDomains(jsonData)
+
+	return domains
+}
+
+func crtsh(t_queries []string) error {
+	var err error = nil
+
+	outputFile := args.OutputFile
+	writeToFile := (len(outputFile) > 0)
+
+	var fileHandle *os.File
+	if writeToFile {
+		fileHandle, err = os.Create(outputFile)
+		if err != nil {
+			return err
+		}
+	}
+
 	for _, query := range t_queries {
-		// Encode wildcard if necessary.
-		if encodeWildcard {
-			query = strings.ReplaceAll(query, WILDCARD, WILDCARD_ENCODE)
+		domains := fetch(query)
+
+		for _, domain := range domains {
+			// Write results of fetching.
+			if writeToFile {
+				fileHandle.WriteString(domain)
+			} else {
+				// Write results to intended endpoint.
+				fmt.Println(domain)
+			}
 		}
+	}
 
-		// Make the request.
-		url := fmt.Sprintf(CRTSH_BASE_URL, query)
-		resp, err := http.Get(url)
-		if err != nil {
-			Log(err)
-			continue
+	return err
+}
+
+func printWildcards() {
+	if args.Wildcard {
+		for _, elem := range wildcardSubdomains {
+			// TODO: Fix.
 		}
-
-		// Deal with JSON in the body.
-		defer resp.Body.Close()
-		body, err := io.ReadAll(resp.Body)
-
-		var jsonData []map[string]interface{}
-		err = json.Unmarshal(body, &jsonData)
-		if err != nil {
-			Log(err)
-			continue
-		}
-
-		// Loop through domains
-		domains := extractDomains(jsonData)
 	}
 }
 
@@ -167,5 +225,10 @@ func main() {
 	}
 
 	// Perform subdomain fetching.
-	fetch(queries)
+	err = crtsh(queries)
+	if err != nil {
+		Fail(err)
+	}
+
+	printWildcards()
 }
