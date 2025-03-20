@@ -7,24 +7,25 @@ import (
 	"fmt"
 	"github.com/alexflint/go-arg"
 	"log"
+	"net/http"
 	"os"
-	// "net/http"
+	"strings"
 )
 
 // Structs:
 // Arguments Struct:
 type Arguments struct {
-	Query       string `arg:"-q,--query" help:"Domain query to get subdomains of."`
+	Query      string `arg:"-q,--query" help:"Domain query to get subdomains of."`
 	InputFile  string `arg:"-f,--file" help:"Path to file containing queries."`
-	Recurse     bool   `arg:"-r,--recurse" help:"Recursively search for subdomains." default:"false"`
-	Wildcard    bool   `arg:"-w,--wildcard" help:"Include wildcard in output." default:"false"`
-	Json bool   `arg:"-j,--json" help:"Include wildcard in output." default:"false"`
+	Recurse    bool   `arg:"-r,--recurse" help:"Recursively search for subdomains." default:"false"`
+	Wildcard   bool   `arg:"-w,--wildcard" help:"Include wildcard in output." default:"false"`
+	Json       bool   `arg:"-j,--json" help:"Include wildcard in output." default:"false"`
 	OutputFile string `arg:"-o,--output" help:"Write to output file instead of terminal." default:"crtsh.txt"`
 }
 
 // Methods:
 func (Arguments) Version() string {
-	return "Version: 1.0"
+	return fmt.Sprintf("Version: %s", VERSION)
 }
 
 func (this Arguments) getQueries() ([]string, error) {
@@ -39,7 +40,9 @@ func (this Arguments) getQueries() ([]string, error) {
 	}
 
 	if len(this.InputFile) > 0 {
-		file, err := os.Open(this.InputFile)
+		var file *os.File
+
+		file, err = os.Open(this.InputFile)
 		if err != nil {
 			goto ret
 		}
@@ -51,7 +54,6 @@ func (this Arguments) getQueries() ([]string, error) {
 				goto ret
 			}
 		}
-
 	}
 
 ret:
@@ -59,9 +61,13 @@ ret:
 }
 
 // Globals:
-const CRTSH_BASE_URL = "https://crt.sh/?q=%s&output=json"
-const VERSION = "1.0"
-const QUERIES_PREALLOC = 100
+const (
+	CRTSH_BASE_URL   = "https://crt.sh/?q=%s&output=json"
+	VERSION          = "1.0"
+	QUERIES_PREALLOC = 100
+	WILDCARD         = "*"
+	WILDCARD_ENCODE  = "%25"
+)
 
 var args Arguments
 
@@ -104,8 +110,19 @@ ret:
 }
 
 func fetch(t_queries []string) {
+	encodeWildcard := args.Wildcard || args.Recurse
+
 	for _, query := range t_queries {
+		if encodeWildcard {
+			query = strings.ReplaceAll(query, WILDCARD, WILDCARD_ENCODE)
+		}
+
 		fmt.Println("Hypothetical query: ", query)
+		url := fmt.Sprintf(CRTSH_BASE_URL, query)
+		resp, err := http.Get(url)
+		if err != nil {
+			fmt.Println(resp, err)
+		}
 	}
 }
 
