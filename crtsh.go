@@ -1,11 +1,12 @@
 package main
 
 import (
-	//	"encoding/json"
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/alexflint/go-arg"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -78,6 +79,10 @@ func Fail(t_err error) {
 	os.Exit(1)
 }
 
+func Log(t_err error) {
+	log.Println(t_err)
+}
+
 func Print() {
 
 }
@@ -109,20 +114,48 @@ ret:
 	return queries, err
 }
 
+func extractDomains(t_json []map[string]interface{}) []string {
+	var domains []string
+
+	for key, value := range t_json {
+		if key == "name_value" {
+			domains = append(domains, value)
+		}
+	}
+
+	return domains
+}
+
 func fetch(t_queries []string) {
 	encodeWildcard := args.Wildcard || args.Recurse
 
 	for _, query := range t_queries {
+		// Encode wildcard if necessary.
 		if encodeWildcard {
 			query = strings.ReplaceAll(query, WILDCARD, WILDCARD_ENCODE)
 		}
 
-		fmt.Println("Hypothetical query: ", query)
+		// Make the request.
 		url := fmt.Sprintf(CRTSH_BASE_URL, query)
 		resp, err := http.Get(url)
 		if err != nil {
-			fmt.Println(resp, err)
+			Log(err)
+			continue
 		}
+
+		// Deal with JSON in the body.
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+
+		var jsonData []map[string]interface{}
+		err = json.Unmarshal(body, &jsonData)
+		if err != nil {
+			Log(err)
+			continue
+		}
+
+		// Loop through domains
+		domains := extractDomains(jsonData)
 	}
 }
 
