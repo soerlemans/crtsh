@@ -29,13 +29,13 @@ func (Arguments) Version() string {
 }
 
 func (this Arguments) getQueries() ([]string, error) {
-	var err error = nil
+	var err error
 	var queries []string = make([]string, 0, DOMAINS_PREALLOC_DEFAULT_SIZE)
 
 	if len(args.Query) > 0 {
 		queries, err = appendQuery(queries, this.Query)
 		if err != nil {
-			goto ret
+			return queries, err
 		}
 	}
 
@@ -44,20 +44,19 @@ func (this Arguments) getQueries() ([]string, error) {
 
 		file, err = os.Open(this.InputFile)
 		if err != nil {
-			goto ret
+			return queries, err
 		}
 
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
 			queries, err = appendQuery(queries, scanner.Text())
 			if err != nil {
-				goto ret
+				return queries, err
 			}
 		}
 	}
 
-ret:
-	return queries, err
+	return queries, nil
 }
 
 // DomainQueue Struct:
