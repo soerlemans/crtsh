@@ -102,6 +102,7 @@ func (this DefaultOutputWriter) write(t_str string) error {
 
 	// Write results of fetching.
 	if writeToFile {
+		t_str += "\n"
 		fileHandle.WriteString(t_str)
 	} else {
 		// Write results to intended endpoint.
